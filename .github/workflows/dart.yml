@@ -1,42 +1,56 @@
-name: iOS-ipa-build
+name: Flutter iOS Tests
 
 on:
   workflow_dispatch:
+  pull_request:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
 
 jobs:
-  build-ios:
-    name: 🎉 iOS Build
+  flutter-tests:
+    name: Flutter Unit & Widget Tests
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: subosito/flutter-action@v2
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
-          architecture: x64
-      - run: flutter pub get
-      
+          channel: stable
 
-      - run: pod repo update
-        working-directory: ios
+      - name: Get dependencies
+        run: flutter pub get
 
-      - run: flutter build ios --release --no-codesign
+      - name: Run Flutter tests
+        run: flutter test
 
-      - run: mkdir Payload
-        working-directory: build/ios/iphoneos
+  ios-simulator-check:
+    name: iOS Simulator Build (No Codesign)
+    runs-on: macos-latest
+    needs: flutter-tests
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - run: mv Runner.app/ Payload
-        working-directory: build/ios/iphoneos
-
-      - name: Zip output
-        run: zip -qq -r -9 FlutterIpaExport.ipa Payload
-        working-directory: build/ios/iphoneos
-
-      - name: Upload binaries to release
-        uses: svenstaro/upload-release-action@v2
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/ios/iphoneos/FlutterIpaExport.ipa
-          tag: v1.0
-          overwrite: true
-          body: "This is first release"
+          channel: stable
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build iOS app for simulator
+        run: flutter build ios --debug --simulator
+
+      - name: Run integration_test suite (if present)
+        run: |
+          if [ -d integration_test ] && find integration_test -type f -name '*_test.dart' | grep -q .; then
+            flutter test integration_test
+          else
+            echo "No integration_test files found; skipping integration_test step."
+          fi
